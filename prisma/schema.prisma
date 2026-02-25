@@ -1,0 +1,101 @@
+// learn more about Prisma schema: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 役職（ロール判定に使用: 係長以上 = manager, 担当/主任 = general）
+enum Position {
+  TANTO      // 担当
+  SHUNIN     // 主任
+  KAKARICHOU // 係長
+  KACHOU     // 課長
+  BUCHOU     // 部長
+}
+
+model SalesPerson {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(50)
+  department String   @db.VarChar(50)
+  position   Position
+  email      String   @unique @db.VarChar(255)
+  password   String   @db.VarChar(255)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  dailyReports DailyReport[]
+  comments     Comment[]
+
+  @@map("sales_persons")
+}
+
+model Customer {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(100)
+  address       String?  @db.VarChar(200)
+  phone         String?  @db.VarChar(20)
+  contactPerson String?  @db.VarChar(50) @map("contact_person")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  visitRecords VisitRecord[]
+
+  @@map("customers")
+}
+
+model DailyReport {
+  id            Int      @id @default(autoincrement())
+  salesPersonId Int      @map("sales_person_id")
+  reportDate    DateTime @map("report_date") @db.Date
+  problem       String?  @db.VarChar(3000)
+  plan          String?  @db.VarChar(3000)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  salesPerson  SalesPerson   @relation(fields: [salesPersonId], references: [id])
+  visitRecords VisitRecord[]
+  comments     Comment[]
+
+  // 1営業担当者につき1日1件の制約
+  @@unique([salesPersonId, reportDate])
+  @@map("daily_reports")
+}
+
+model VisitRecord {
+  id            Int      @id @default(autoincrement())
+  dailyReportId Int      @map("daily_report_id")
+  customerId    Int      @map("customer_id")
+  visitContent  String   @db.VarChar(2000) @map("visit_content")
+  sortOrder     Int      @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // 日報削除時にカスケード削除
+  dailyReport DailyReport @relation(fields: [dailyReportId], references: [id], onDelete: Cascade)
+  // 顧客は論理削除のみのため Restrict（物理削除を防止）
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@map("visit_records")
+}
+
+model Comment {
+  id            Int      @id @default(autoincrement())
+  dailyReportId Int      @map("daily_report_id")
+  commenterId   Int      @map("commenter_id")
+  body          String   @db.VarChar(1000)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // 日報削除時にカスケード削除
+  dailyReport DailyReport @relation(fields: [dailyReportId], references: [id], onDelete: Cascade)
+  commenter   SalesPerson @relation(fields: [commenterId], references: [id])
+
+  @@map("comments")
+}

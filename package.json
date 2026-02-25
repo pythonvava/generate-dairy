@@ -2,11 +2,14 @@
   "name": "generate-dairy",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
-  "directories": {
-    "doc": "doc"
-  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
+    "dev": "npm run dev --workspace=backend & npm run dev --workspace=frontend",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest",
@@ -14,13 +17,13 @@
     "test:coverage": "vitest run --coverage",
     "prepare": "husky"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "lint-staged": {
     "**/*.{ts,tsx}": "eslint --fix"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "営業日報システム",
   "devDependencies": {
     "@eslint/js": "^9.39.3",
     "@testing-library/jest-dom": "^6.9.1",
