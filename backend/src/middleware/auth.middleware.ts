@@ -2,7 +2,13 @@ import type { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { error } from '../lib/response'
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'secret'
+const JWT_SECRET = (() => {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not set')
+  }
+  return secret
+})()
 
 interface JwtPayload {
   id: number
@@ -29,7 +35,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
   const token = authHeader.slice(7)
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as unknown as JwtPayload
     req.user = {
       id: payload.id,
       email: payload.email,
