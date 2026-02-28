@@ -89,3 +89,33 @@ export type PaginationMeta = {
   total_count: number
   total_pages: number
 }
+
+/** API 共通レスポンスのラッパー型 */
+export type ApiResponse<T> = {
+  status: 'success'
+  data: T
+}
+
+/** ページネーション付きレスポンスの型 */
+export type PaginatedResponse<T> = {
+  status: 'success'
+  data: {
+    items: T[]
+  }
+  pagination: PaginationMeta
+}
+
+/** API エラーレスポンスの型 */
+export type ApiErrorDetail = {
+  field: string
+  message: string
+}
+
+export type ApiError = {
+  status: 'error'
+  error: {
+    code: string
+    message: string
+    details?: ApiErrorDetail[]
+  }
+}
