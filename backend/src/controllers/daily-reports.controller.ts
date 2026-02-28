@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express'
-import { query, validationResult } from 'express-validator'
+import { query, validationResult, matchedData } from 'express-validator'
 import { prisma } from '../lib/prisma'
 import { paginated, error } from '../lib/response'
 
@@ -9,12 +9,16 @@ import { paginated, error } from '../lib/response'
 export const getDailyReportsValidation = [
   query('date_from')
     .optional()
-    .isISO8601()
-    .withMessage('date_from は YYYY-MM-DD 形式で入力してください'),
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('date_from は YYYY-MM-DD 形式で入力してください')
+    .isDate()
+    .withMessage('date_from は有効な日付を入力してください'),
   query('date_to')
     .optional()
-    .isISO8601()
-    .withMessage('date_to は YYYY-MM-DD 形式で入力してください'),
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('date_to は YYYY-MM-DD 形式で入力してください')
+    .isDate()
+    .withMessage('date_to は有効な日付を入力してください'),
   query('sales_person_id')
     .optional()
     .isInt({ min: 1 })
@@ -44,7 +48,7 @@ export async function getDailyReports(req: Request, res: Response): Promise<void
   const errors = validationResult(req)
   if (!errors.isEmpty()) {
     const details = errors.array().map((err) => ({
-      field: 'msg' in err && 'path' in err ? (err as { path: string }).path : 'unknown',
+      field: 'path' in err ? (err as { path: string }).path : 'unknown',
       message: err.msg as string,
     }))
     error(res, 'VALIDATION_ERROR', '入力内容に誤りがあります', 400, details)
@@ -57,26 +61,42 @@ export async function getDailyReports(req: Request, res: Response): Promise<void
     return
   }
 
+  // matchedData() でバリデーション・サニタイズ済みの値を取得する
+  // （express-validator の .toInt() は req.query を直接変換しないため、
+  //   matchedData() 経由で取得しないと型変換が反映されない）
+  const validated = matchedData(req) as {
+    date_from?: string
+    date_to?: string
+    sales_person_id?: number
+    page?: number
+    per_page?: number
+  }
+
   // Parse query parameters with defaults
   const now = new Date()
   const defaultDateTo = formatDate(now)
   const defaultDateFrom = formatDate(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000))
 
-  const dateFrom = (req.query.date_from as string) || defaultDateFrom
-  const dateTo = (req.query.date_to as string) || defaultDateTo
-  const page = typeof req.query.page === 'number' ? req.query.page : 1
-  const perPage = typeof req.query.per_page === 'number' ? req.query.per_page : 20
+  const dateFrom = validated.date_from ?? defaultDateFrom
+  const dateTo = validated.date_to ?? defaultDateTo
+  const page = validated.page ?? 1
+  const perPage = validated.per_page ?? 20
+
+  // date_from > date_to のクロスフィールドバリデーション（テストケース DL-015）
+  if (new Date(dateFrom) > new Date(dateTo)) {
+    error(res, 'VALIDATION_ERROR', 'date_from は date_to 以前の日付を指定してください', 400)
+    return
+  }
 
   // Build sales_person_id filter based on role
   let salesPersonIdFilter: number | undefined
   if (user.role === 'general') {
-    // General users can only see their own reports
+    // 一般ユーザーは自分の日報のみ閲覧可能。
+    // クエリパラメータの sales_person_id は無視し、認証済みユーザーのIDを強制する。
     salesPersonIdFilter = user.id
   } else {
-    // Managers can filter by any sales_person_id, or see all
-    salesPersonIdFilter = typeof req.query.sales_person_id === 'number'
-      ? req.query.sales_person_id
-      : undefined
+    // 上長は任意の sales_person_id で絞り込み可能（未指定時は全員分）
+    salesPersonIdFilter = validated.sales_person_id
   }
 
   // Build Prisma where clause
@@ -134,7 +154,8 @@ export async function getDailyReports(req: Request, res: Response): Promise<void
 
     paginated(res, items, page, perPage, totalCount)
   } catch (err) {
-    console.error('Error fetching daily reports:', err)
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('Error fetching daily reports:', message)
     error(res, 'INTERNAL_ERROR', 'サーバー内部エラーが発生しました', 500)
   }
 }
